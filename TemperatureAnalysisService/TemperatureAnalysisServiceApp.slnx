@@ -2,4 +2,5 @@
   <Folder Name="/src/">
     <Project Path="src/TemperatureAnalysisService.csproj" />
   </Folder>
+  <Project Path="../Libraries/Temperature.Contracts/Temperature.Contracts.csproj" />
 </Solution>

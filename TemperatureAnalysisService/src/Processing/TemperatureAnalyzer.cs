@@ -1,4 +1,4 @@
-using TemperatureAnalysisService.Contracts;
+using Temperature.Contracts;
 
 namespace TemperatureAnalysisService.Processing;
 

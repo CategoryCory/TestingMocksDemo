@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using TemperatureAnalysisService.Contracts;
+using Temperature.Contracts;
 
 namespace TemperatureAnalysisService.Messaging;
 
