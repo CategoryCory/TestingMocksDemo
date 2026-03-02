@@ -11,8 +11,8 @@ services:
 
   worker:
     build:
-      context: ./src
-      dockerfile: Dockerfile
+      context: ../
+      dockerfile: TemperatureAnalysisService/src/Dockerfile
     container_name: temperature-worker
     depends_on:
       - rabbitmq

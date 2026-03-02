@@ -2,10 +2,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY TemperatureAnalysisService.csproj .
-RUN dotnet restore
+COPY Libraries/Temperature.Contracts/Temperature.Contracts.csproj Libraries/Temperature.Contracts/
+COPY TemperatureAnalysisService/src/TemperatureAnalysisService.csproj TemperatureAnalysisService/src/
+RUN dotnet restore TemperatureAnalysisService/src/TemperatureAnalysisService.csproj
 
-COPY . .
+COPY Libraries/Temperature.Contracts/ Libraries/Temperature.Contracts/
+COPY TemperatureAnalysisService/src/ TemperatureAnalysisService/src/
+WORKDIR /src/TemperatureAnalysisService/src
 RUN dotnet publish -c Release -o /app/publish
 
 # ---------- runtime stage ----------
