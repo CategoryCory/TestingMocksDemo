@@ -1,5 +1,3 @@
-using RabbitMQ.Client;
-using TemperatureAnalysisService.Messaging;
 using TemperatureAnalysisService.Processing;
 
 namespace TemperatureAnalysisService;
@@ -15,40 +13,15 @@ public class Program
     /// <param name="args">The command-line arguments passed to the application.</param>
     public static void Main(string[] args)
     {
-        const string rabbitHost = "localhost";
-        const string inputQueue = "temperature_readings";
-        const string outputQueue = "temperature_results";
-        const double thresholdCelsius = 80.0;
-
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            .AddEnvironmentVariables()
+            .Build();
+            
         var builder = Host.CreateApplicationBuilder(args);
 
-        builder.Services.AddSingleton(sp =>
-            RabbitMqConnection.CreateAsync(rabbitHost).GetAwaiter().GetResult());
-        
-        builder.Services.AddSingleton(sp =>
-            sp.GetRequiredService<RabbitMqConnection>().CreateChannelAsync().GetAwaiter().GetResult());
-        
-        builder.Services.AddSingleton(sp =>
-        {
-            var consumer = new RabbitMqConsumer(
-                channel: sp.GetRequiredService<IChannel>(),
-                queueName: inputQueue);
-            
-            consumer.InitializeAsync().GetAwaiter().GetResult();
-            return consumer;
-        });
-
-        builder.Services.AddSingleton(sp =>
-        {
-            var publisher = new RabbitMqPublisher(
-                channel: sp.GetRequiredService<IChannel>(),
-                queueName: outputQueue);
-            
-            publisher.InitializeAsync().GetAwaiter().GetResult();
-            return publisher;
-        });
-
-        builder.Services.AddSingleton(new TemperatureAnalyzer(thresholdCelsius));
+        builder.Services.AddSingleton(
+            new TemperatureAnalyzer(thresholdCelsius: configuration.GetValue<double>("ThresholdCelsius")));
 
         builder.Services.AddHostedService<Worker>();
 

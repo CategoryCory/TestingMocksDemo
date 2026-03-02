@@ -59,7 +59,7 @@ public sealed class RabbitMqConsumer
             var json = Encoding.UTF8.GetString(args.Body.ToArray());
             var reading = JsonSerializer.Deserialize<TemperatureReading>(json);
 
-            if (reading is not null)
+            if (reading is not null && reading.SensorId != Guid.Empty)
             {
                 await handler(reading);
             }

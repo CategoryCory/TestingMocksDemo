@@ -32,11 +32,12 @@ public sealed class TemperatureAnalyzer
             ? TemperatureStatus.High
             : TemperatureStatus.Normal;
 
-        return new TemperatureAnalysisResult(
-            SensorId: reading.SensorId,
-            TempCelsius: reading.TempCelsius,
-            Timestamp: reading.Timestamp,
-            Status: status
-        );
+        return new()
+        {
+            SensorId = reading.SensorId,
+            TempCelsius = reading.TempCelsius,
+            Timestamp = reading.Timestamp,
+            Status = status
+        };
     }
 }

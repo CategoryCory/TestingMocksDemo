@@ -9,16 +9,6 @@ namespace TemperatureAnalysisService;
 public class Worker : BackgroundService
 {
     /// <summary>
-    /// The RabbitMQ consumer used to receive temperature readings from the input queue.
-    /// </summary>
-    private readonly RabbitMqConsumer _consumer;
-
-    /// <summary>
-    /// The RabbitMQ publisher used to send temperature analysis results to the output queue.
-    /// </summary>
-    private readonly RabbitMqPublisher _publisher;
-
-    /// <summary>
     /// The temperature analyzer used to analyze temperature readings and determine their status based on a predefined threshold.
     /// </summary>
     private readonly TemperatureAnalyzer _analyzer;
@@ -29,22 +19,30 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
 
     /// <summary>
+    /// The RabbitMQ host address used to connect to the RabbitMQ server for consuming and publishing messages.
+    /// </summary>
+    private readonly string _rabbitHost;
+
+    /// <summary>
+    /// The name of the RabbitMQ queue from which temperature readings will be consumed.
+    /// </summary>
+    private const string InputQueue = "temperature_readings";
+
+    /// <summary>
+    /// The name of the RabbitMQ queue to which temperature analysis results will be published.
+    /// </summary>
+    private const string OutputQueue = "temperature_results";
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="Worker"/> class.
     /// </summary>
-    /// <param name="consumer">The RabbitMQ consumer used to receive temperature readings from the input queue.</param>
-    /// <param name="publisher">The RabbitMQ publisher used to send temperature analysis results to the output queue.</param>
     /// <param name="analyzer">The temperature analyzer used to analyze temperature readings and determine their status based on a predefined threshold.</param>
     /// <param name="logger">The logger used to log information about the worker's operations and status.</param>
-    public Worker(
-        RabbitMqConsumer consumer,
-        RabbitMqPublisher publisher,
-        TemperatureAnalyzer analyzer,
-        ILogger<Worker> logger)
+    public Worker(TemperatureAnalyzer analyzer, ILogger<Worker> logger)
     {
-        _consumer = consumer;
         _analyzer = analyzer;
-        _publisher = publisher;
         _logger = logger;
+        _rabbitHost = Environment.GetEnvironmentVariable("RABBITMQ_HOST") ?? "localhost";
     }
 
     /// <summary>
@@ -54,12 +52,37 @@ public class Worker : BackgroundService
     /// <returns>A task that represents the asynchronous operation.</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Worker started at: {time}", DateTimeOffset.Now);
-
-        await _consumer.StartConsumingAsync(async reading =>
+        while (!stoppingToken.IsCancellationRequested)
         {
-            var result = _analyzer.Analyze(reading);
-            await _publisher.PublishAsync(result);
-        });
+            try
+            {
+                _logger.LogInformation("Attempting to connect to RabbitMQ at {Host}...", _rabbitHost);
+
+                await using var connection = await RabbitMqConnection.CreateAsync(_rabbitHost);
+
+                var channel = await connection.CreateChannelAsync();
+
+                var consumer = new RabbitMqConsumer(channel, InputQueue);
+                var publisher = new RabbitMqPublisher(channel, OutputQueue);
+
+                await consumer.InitializeAsync();
+                await publisher.InitializeAsync();
+
+                _logger.LogInformation("Connected to RabbitMQ at {Host}. Starting to consume messages...", _rabbitHost);
+
+                await consumer.StartConsumingAsync(async reading =>
+                {
+                    var result = _analyzer.Analyze(reading);
+                    await publisher.PublishAsync(result);
+                });
+
+                await Task.Delay(Timeout.Infinite, stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RabbitMQ not ready. Retrying in 5 seconds...");
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+        }
     }
 }
