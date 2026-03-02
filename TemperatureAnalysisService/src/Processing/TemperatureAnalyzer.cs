@@ -16,10 +16,7 @@ public sealed class TemperatureAnalyzer
     /// Initializes a new instance of the <see cref="TemperatureAnalyzer"/> class with the specified temperature threshold.
     /// </summary>
     /// <param name="thresholdCelsius"></param>
-    public TemperatureAnalyzer(double thresholdCelsius)
-    {
-        _thresholdCelsius = thresholdCelsius;
-    }
+    public TemperatureAnalyzer(double thresholdCelsius) => _thresholdCelsius = thresholdCelsius;
     
     /// <summary>
     /// Analyzes a temperature reading and determines its status based on the predefined threshold.

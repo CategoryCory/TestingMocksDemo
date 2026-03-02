@@ -16,4 +16,12 @@
   <ItemGroup>
     <ProjectReference Include="../../Libraries/Temperature.Contracts/Temperature.Contracts.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Alerts/" />
+    <Folder Include="Contracts/" />
+    <Folder Include="Messaging/" />
+    <Folder Include="Persistence/" />
+    <Folder Include="Simulation/" />
+  </ItemGroup>
 </Project>

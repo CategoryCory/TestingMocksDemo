@@ -8,6 +8,16 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+  
+  postgres:
+    image: postgres:18.3-bookworm
+    container_name: demo-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: temperature_db
+    ports:
+      - "5432:5432"
 
   worker:
     build:

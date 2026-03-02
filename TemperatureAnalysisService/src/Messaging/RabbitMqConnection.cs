@@ -16,10 +16,7 @@ public sealed class RabbitMqConnection : IAsyncDisposable
     /// Initializes a new instance of the <see cref="RabbitMqConnection"/> class with the specified RabbitMQ connection.
     /// </summary>
     /// <param name="connection">The underlying RabbitMQ connection to use for creating channels.</param>
-    private RabbitMqConnection(IConnection connection)
-    {
-        _connection = connection;
-    }
+    private RabbitMqConnection(IConnection connection) => _connection = connection;
 
     /// <summary>
     /// Asynchronously creates a new instance of the <see cref="RabbitMqConnection"/> class.
@@ -49,8 +46,5 @@ public sealed class RabbitMqConnection : IAsyncDisposable
     /// Asynchronously disposes of the RabbitMQ connection, releasing any resources associated with it.
     /// </summary>
     /// <returns>A task that represents the asynchronous disposal operation.</returns>
-    public async ValueTask DisposeAsync()
-    {
-        await _connection.DisposeAsync();
-    }
+    public async ValueTask DisposeAsync() => await _connection.DisposeAsync();
 }
