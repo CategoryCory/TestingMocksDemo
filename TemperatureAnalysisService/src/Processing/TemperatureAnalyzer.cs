@@ -29,7 +29,7 @@ public sealed class TemperatureAnalyzer
     public TemperatureAnalysisResult Analyze(TemperatureReading reading)
     {
         var status = reading.TempCelsius > _thresholdCelsius
-            ? TemperatureStatus.High
+            ? TemperatureStatus.Critical
             : TemperatureStatus.Normal;
 
         return new()

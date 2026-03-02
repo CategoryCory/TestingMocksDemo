@@ -13,7 +13,7 @@ public enum TemperatureStatus
     /// <summary>
     /// The temperature is above the normal range.
     /// </summary>
-    High,
+    Critical,
 
     /// <summary>
     /// An error occurred while analyzing the temperature reading.
