@@ -30,10 +30,9 @@ public sealed class Worker : BackgroundService
     private readonly IAlertService _alertService;
 
     /// <summary>
-    /// The temperature result repository used to save consumed temperature analysis results for later
-    /// retrieval and analysis.
+    /// The scope factory used to resolve scoped dependencies within the singleton hosted service.
     /// </summary>
-    private readonly ITemperatureResultRepository _repository;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     /// <summary>
     /// The logger instance used to log informational messages and alerts throughout the worker's operation.
@@ -47,21 +46,21 @@ public sealed class Worker : BackgroundService
     /// <param name="publisher">The temperature reading publisher.</param>
     /// <param name="consumer">The temperature result consumer.</param>
     /// <param name="alertService">The alert service.</param>
-    /// <param name="repository">The temperature result repository.</param>
+    /// <param name="scopeFactory">The scope factory.</param>
     /// <param name="logger">The logger instance.</param>
     public Worker(
         ITemperatureReadingGenerator generator,
         ITemperatureReadingPublisher publisher,
         ITemperatureResultConsumer consumer,
         IAlertService alertService,
-        ITemperatureResultRepository repository,
+        IServiceScopeFactory scopeFactory,
         ILogger<Worker> logger)
     {
         _generator = generator;
         _publisher = publisher;
         _consumer = consumer;
         _alertService = alertService;
-        _repository = repository;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -105,7 +104,9 @@ public sealed class Worker : BackgroundService
             result.Timestamp
         );
 
-        await _repository.SaveAsync(result);
+        using var scope = _scopeFactory.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<ITemperatureResultRepository>();
+        await repository.SaveAsync(result);
 
         if (result.Status == TemperatureStatus.Critical)
         {
