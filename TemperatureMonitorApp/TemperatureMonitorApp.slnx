@@ -1,6 +1,5 @@
 <Solution>
   <Project Path="../Libraries/Temperature.Contracts/Temperature.Contracts.csproj" />
-  <Project Path="TemperatureMonitor.IntegrationTests/TemperatureMonitor.IntegrationTests.csproj" />
-  <Project Path="TemperatureMonitor.UnitTests/TemperatureMonitor.UnitTests.csproj" />
+  <Project Path="TemperatureMonitor.Tests/TemperatureMonitor.Tests.csproj" />
   <Project Path="TemperatureMonitor/TemperatureMonitor.csproj" />
 </Solution>
