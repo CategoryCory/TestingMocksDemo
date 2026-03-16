@@ -25,9 +25,9 @@ public sealed class Worker : BackgroundService
     private readonly ITemperatureResultConsumer _consumer;
 
     /// <summary>
-    /// The alert service used to raise alerts when critical temperature conditions are detected.
+    /// The alert bus used to raise alerts when critical temperature conditions are detected.
     /// </summary>
-    private readonly IAlertService _alertService;
+    private readonly IAlertBus _alertBus;
 
     /// <summary>
     /// The scope factory used to resolve scoped dependencies within the singleton hosted service.
@@ -45,21 +45,21 @@ public sealed class Worker : BackgroundService
     /// <param name="generator">The temperature reading generator.</param>
     /// <param name="publisher">The temperature reading publisher.</param>
     /// <param name="consumer">The temperature result consumer.</param>
-    /// <param name="alertService">The alert service.</param>
+    /// <param name="alertBus">The alert bus.</param>
     /// <param name="scopeFactory">The scope factory.</param>
     /// <param name="logger">The logger instance.</param>
     public Worker(
         ITemperatureReadingGenerator generator,
         ITemperatureReadingPublisher publisher,
         ITemperatureResultConsumer consumer,
-        IAlertService alertService,
+        IAlertBus alertBus,
         IServiceScopeFactory scopeFactory,
         ILogger<Worker> logger)
     {
         _generator = generator;
         _publisher = publisher;
         _consumer = consumer;
-        _alertService = alertService;
+        _alertBus = alertBus;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -110,7 +110,7 @@ public sealed class Worker : BackgroundService
 
         if (result.Status == TemperatureStatus.Critical)
         {
-            await _alertService.RaiseAlertAsync(result);
+            _alertBus.Raise(result);
         }
     }
 }

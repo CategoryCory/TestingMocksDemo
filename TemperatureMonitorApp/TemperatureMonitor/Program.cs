@@ -49,7 +49,8 @@ public class Program
 
         builder.Services.AddSingleton(publisher);
         builder.Services.AddSingleton(consumer);
-        builder.Services.AddSingleton<IAlertService, LoggingAlertService>();
+        builder.Services.AddSingleton<IAlertBus, AlertBus>();
+        builder.Services.AddSingleton<LoggingAlertHandler>();
         builder.Services.AddSingleton<ITemperatureReadingGenerator, RandomTemperatureGenerator>();
 
         builder.Services.AddDbContext<AppDbContext>(options =>
@@ -59,6 +60,8 @@ public class Program
         builder.Services.AddHostedService<Worker>();
 
         var host = builder.Build();
+
+        host.Services.GetRequiredService<LoggingAlertHandler>();
 
         using (var scope = host.Services.CreateScope())
         {

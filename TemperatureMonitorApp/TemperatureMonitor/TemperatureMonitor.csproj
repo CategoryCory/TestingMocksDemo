@@ -18,8 +18,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Alerts/" />
     <Folder Include="Contracts/" />
+    <Folder Include="Events/" />
     <Folder Include="Messaging/" />
     <Folder Include="Persistence/" />
     <Folder Include="Simulation/" />
