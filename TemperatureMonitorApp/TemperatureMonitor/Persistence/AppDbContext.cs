@@ -5,7 +5,7 @@ namespace TemperatureMonitor.Persistence;
 /// <summary>
 /// Represents the application's database context for managing temperature analysis results.
 /// </summary>
-public sealed class AppDbContext : DbContext
+public class AppDbContext : DbContext
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="AppDbContext"/> class with the specified options.

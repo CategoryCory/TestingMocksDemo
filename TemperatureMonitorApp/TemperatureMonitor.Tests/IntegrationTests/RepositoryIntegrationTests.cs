@@ -2,35 +2,31 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Temperature.Contracts;
 using TemperatureMonitor.Persistence;
-using Testcontainers.PostgreSql;
-
 namespace TemperatureMonitor.Tests.IntegrationTests;
 
-public class RepositoryIntegrationTests : IAsyncLifetime
+/// <summary>
+/// The container and schema are created once per test class run by <see cref="RepositoryTestFixture"/>.
+/// Each test's own <see cref="InitializeAsync"/> calls <see cref="RepositoryTestFixture.ResetAsync"/>
+/// via Respawn to wipe all rows and restart identity sequences before the test body executes.
+/// </summary>
+public class RepositoryIntegrationTests : IClassFixture<RepositoryTestFixture>, IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:18.3-bookworm").Build();
-    
-    private DbContextOptions<AppDbContext> _dbContextOptions = null!;
+    private readonly RepositoryTestFixture _fixture;
     private PostgresTemperatureResultRepository _sut = null!;
+
+    public RepositoryIntegrationTests(RepositoryTestFixture fixture)
+        => _fixture = fixture;
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-
-        _dbContextOptions = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(_postgres.GetConnectionString())
-            .Options;
-        
-        // Create the schema once before any tests in this class runs
-        await using var db = new AppDbContext(_dbContextOptions);
-        await db.Database.EnsureCreatedAsync();
-
-        _sut = new PostgresTemperatureResultRepository(new AppDbContext(_dbContextOptions));
+        await _fixture.ResetAsync();
+        _sut = new PostgresTemperatureResultRepository(new AppDbContext(_fixture.DbContextOptions));
     }
 
-    public async Task DisposeAsync() => await _postgres.DisposeAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task SaveAsync_PersistsRecordToDatabase()
     {
         // Arrange
@@ -46,15 +42,119 @@ public class RepositoryIntegrationTests : IAsyncLifetime
         await _sut.SaveAsync(result);
 
         // Assert - use a fresh DbContext instance to avoid EF change-tracking
-        await using var assertDb = new AppDbContext(_dbContextOptions);
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
         var saved = await assertDb.TemperatureResults.SingleAsync();
 
         Assert.Equal(result.SensorId, saved.SensorId);
         Assert.Equal(result.TempCelsius, saved.TempCelsius);
         Assert.Equal("Normal", saved.Status);
+
+        // PostgreSQL's timestamptz has microsecond precision, while .NET's DateTimeOffset
+        // ticks are 100ns. The last tick may be truncated on the round-trip, so we allow
+        // a 1-microsecond tolerance rather than requiring exact equality.
+        var tolerance = TimeSpan.FromMicroseconds(1);
+        Assert.InRange(saved.Timestamp, result.Timestamp - tolerance, result.Timestamp + tolerance);
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SaveAsync_PersistsTimestampToDatabase()
+    {
+        // Arrange - use a fixed timestamp with no sub-microsecond component to avoid
+        // precision loss when PostgreSQL stores it as timestamptz (microsecond precision).
+        var timestamp = new DateTimeOffset(2026, 3, 15, 12, 0, 0, TimeSpan.Zero);
+        var result = new TemperatureAnalysisResult
+        {
+            SensorId = Guid.NewGuid(),
+            TempCelsius = 22.5,
+            Timestamp = timestamp,
+            Status = TemperatureStatus.Normal
+        };
+
+        // Act
+        await _sut.SaveAsync(result);
+
+        // Assert
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
+        var saved = await assertDb.TemperatureResults.SingleAsync();
+
+        Assert.Equal(timestamp, saved.Timestamp);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SaveAsync_WhenStatusIsError_PersistsCorrectStatusString()
+    {
+        // Arrange
+        var result = new TemperatureAnalysisResult
+        {
+            SensorId = Guid.NewGuid(),
+            TempCelsius = 0.0,
+            Timestamp = DateTimeOffset.UtcNow,
+            Status = TemperatureStatus.Error
+        };
+
+        // Act
+        await _sut.SaveAsync(result);
+
+        // Assert
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
+        var saved = await assertDb.TemperatureResults.SingleAsync();
+
+        Assert.Equal("Error", saved.Status);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SaveAsync_MultipleCalls_AssignsDistinctIds()
+    {
+        // Arrange
+        var results = new[]
+        {
+            new TemperatureAnalysisResult { SensorId = Guid.NewGuid(), TempCelsius = 20.0, Timestamp = DateTimeOffset.UtcNow, Status = TemperatureStatus.Normal },
+            new TemperatureAnalysisResult { SensorId = Guid.NewGuid(), TempCelsius = 30.0, Timestamp = DateTimeOffset.UtcNow, Status = TemperatureStatus.Normal },
+        };
+
+        // Act
+        foreach (var result in results)
+            await _sut.SaveAsync(result);
+
+        // Assert
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
+        var saved = await assertDb.TemperatureResults.ToListAsync();
+
+        Assert.All(saved, r => Assert.True(r.Id > 0));
+        Assert.Equal(saved.Count, saved.Select(r => r.Id).Distinct().Count());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task SaveAsync_WhenCancellationRequested_DoesNotPersistRecord()
+    {
+        // Arrange
+        var result = new TemperatureAnalysisResult
+        {
+            SensorId = Guid.NewGuid(),
+            TempCelsius = 42.0,
+            Timestamp = DateTimeOffset.UtcNow,
+            Status = TemperatureStatus.Normal
+        };
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        // Act & Assert
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _sut.SaveAsync(result, cts.Token));
+
+        // Verify no record was committed to the database
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
+        var count = await assertDb.TemperatureResults.CountAsync();
+        Assert.Equal(0, count);
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
     public async Task SaveAsync_AssignsAutoIncrementedId()
     {
         // Arrange
@@ -70,13 +170,14 @@ public class RepositoryIntegrationTests : IAsyncLifetime
         await _sut.SaveAsync(result);
 
         // Assert
-        await using var assertDb = new AppDbContext(_dbContextOptions);
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
         var saved = await assertDb.TemperatureResults.SingleAsync();
 
         Assert.True(saved.Id > 0);
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task SaveAsync_MultipleCalls_PersistsAllRecords()
     {
         // Arrange
@@ -91,7 +192,7 @@ public class RepositoryIntegrationTests : IAsyncLifetime
             await _sut.SaveAsync(result);
 
         // Assert
-        await using var assertDb = new AppDbContext(_dbContextOptions);
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
         var count = await assertDb.TemperatureResults.CountAsync();
 
         Assert.Equal(2, count);
@@ -106,6 +207,7 @@ public class RepositoryIntegrationTests : IAsyncLifetime
     /// PostgreSQL, it is fully visible in the xUnit test failure output. No logs needed.
     /// </summary>
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task SaveAsync_WhenStatusExceedsColumnLength_ThrowsDbUpdateExceptionWithClearRootCause()
     {
         // Arrange
@@ -122,7 +224,7 @@ public class RepositoryIntegrationTests : IAsyncLifetime
 
         // Write the oversized record directly through EF Core to keep the demo focused on the
         // repository → DB boundary rather than enum serialisation.
-        await using var writeDb = new AppDbContext(_dbContextOptions);
+        await using var writeDb = new AppDbContext(_fixture.DbContextOptions);
         writeDb.TemperatureResults.Add(new TemperatureResultRecord
         {
             SensorId = Guid.NewGuid(),

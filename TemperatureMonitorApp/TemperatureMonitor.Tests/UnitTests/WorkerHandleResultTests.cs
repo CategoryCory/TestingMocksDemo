@@ -46,6 +46,7 @@ public sealed class WorkerHandleResultTests
     }
 
     [Fact]
+    [Trait("Category", "Unit")]
     public async Task HandleResultAsync_AlwaysSavesResultToRepository()
     {
         // Arrange
@@ -65,6 +66,7 @@ public sealed class WorkerHandleResultTests
     }
 
     [Fact]
+    [Trait("Category", "Unit")]
     public async Task HandleResultAsync_WhenStatusIsNormal_DoesNotRaiseAlert()
     {
         // Arrange
@@ -84,6 +86,7 @@ public sealed class WorkerHandleResultTests
     }
 
     [Fact]
+    [Trait("Category", "Unit")]
     public async Task HandleResultAsync_WhenStatusIsCritical_RaisesAlert()
     {
         // Arrange
@@ -103,6 +106,7 @@ public sealed class WorkerHandleResultTests
     }
 
     [Fact]
+    [Trait("Category", "Unit")]
     public async Task HandleResultAsync_WhenStatusIsCritical_SavesBeforeRaisingAlert()
     {
         // Arrange
@@ -131,5 +135,54 @@ public sealed class WorkerHandleResultTests
 
         // Assert
         Assert.Equal(["save", "alert"], callOrder);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task HandleResultAsync_WhenStatusIsError_DoesNotRaiseAlert()
+    {
+        // Arrange
+        var result = new TemperatureAnalysisResult
+        {
+            SensorId = Guid.NewGuid(),
+            TempCelsius = 0.0,
+            Timestamp = DateTimeOffset.UtcNow,
+            Status = TemperatureStatus.Error
+        };
+
+        // Act
+        await _sut.HandleResultAsync(result);
+
+        // Assert
+        await _alertService.DidNotReceive().RaiseAlertAsync(Arg.Any<TemperatureAnalysisResult>());
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task HandleResultAsync_DisposesServiceScopeAfterCompletion()
+    {
+        // Arrange
+        var result = new TemperatureAnalysisResult { Status = TemperatureStatus.Normal };
+
+        // Act
+        await _sut.HandleResultAsync(result);
+
+        // Assert
+        _scope.Received(1).Dispose();
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task HandleResultAsync_CreatesNewScopeForEachInvocation()
+    {
+        // Arrange
+        var result = new TemperatureAnalysisResult { Status = TemperatureStatus.Normal };
+
+        // Act
+        await _sut.HandleResultAsync(result);
+        await _sut.HandleResultAsync(result);
+
+        // Assert
+        _scopeFactory.Received(2).CreateScope();
     }
 }

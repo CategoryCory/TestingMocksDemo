@@ -7,6 +7,7 @@ public sealed class RandomTemperatureGeneratorTests
     private readonly RandomTemperatureGenerator _sut = new();
 
     [Fact]
+    [Trait("Category", "Unit")]
     public void Generate_ReturnsReadingsWithUniqueSensorIds()
     {
         // Arrange
@@ -24,6 +25,7 @@ public sealed class RandomTemperatureGeneratorTests
     }
 
     [Fact]
+    [Trait("Category", "Unit")]
     public void Generate_ReturnsTempCelsiusWithinExpectedRange()
     {
         // Arrange
@@ -38,6 +40,42 @@ public sealed class RandomTemperatureGeneratorTests
     }
 
     [Fact]
+    [Trait("Category", "Unit")]
+    public void Generate_ReturnsTempCelsiusWithinExpectedRangeAcrossManySamples()
+    {
+        // Arrange
+        const int numberOfReadings = 1_000;
+        const double min = -10.0;
+        const double max = 100.0;
+
+        // Act
+        var readings = Enumerable.Range(0, numberOfReadings)
+            .Select(_ => _sut.Generate())
+            .ToList();
+
+        // Assert
+        Assert.All(readings, r => Assert.InRange(r.TempCelsius, min, max));
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Generate_ReturnsTempCelsiusRoundedToTwoDecimalPlaces()
+    {
+        // Arrange
+        const int numberOfReadings = 100;
+
+        // Act
+        var readings = Enumerable.Range(0, numberOfReadings)
+            .Select(_ => _sut.Generate())
+            .ToList();
+
+        // Assert
+        Assert.All(readings, r =>
+            Assert.Equal(r.TempCelsius, Math.Round(r.TempCelsius, 2)));
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
     public void Generate_ReturnsReadingsWithCurrentTimestamp()
     {
         // Arrange
@@ -49,5 +87,16 @@ public sealed class RandomTemperatureGeneratorTests
         // Assert
         var after = DateTime.UtcNow;
         Assert.InRange(reading.Timestamp, before, after);
+    }
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public void Generate_ReturnsTimestampWithUtcOffset()
+    {
+        // Act
+        var reading = _sut.Generate();
+
+        // Assert
+        Assert.Equal(TimeSpan.Zero, reading.Timestamp.Offset);
     }
 }

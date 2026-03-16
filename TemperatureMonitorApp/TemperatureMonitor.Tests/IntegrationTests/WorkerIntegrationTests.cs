@@ -5,7 +5,6 @@ using NSubstitute;
 using Temperature.Contracts;
 using TemperatureMonitor.Contracts;
 using TemperatureMonitor.Persistence;
-using Testcontainers.PostgreSql;
 
 namespace TemperatureMonitor.Tests.IntegrationTests;
 
@@ -20,34 +19,29 @@ namespace TemperatureMonitor.Tests.IntegrationTests;
 /// This illustrates that mocks don't disappear in integration tests; they move to the edges of
 /// whatever boundary you have chosen to integrate.
 /// </summary>
-public class WorkerIntegrationTests : IAsyncLifetime
+public class WorkerIntegrationTests : IClassFixture<WorkerTestFixture>, IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:18.3-bookworm").Build();
+    private readonly WorkerTestFixture _fixture;
 
-    // IAlertService is mocked — it sits outside the integration boundary
+    // IAlertService is mocked — it sits outside the integration boundary.
+    // xUnit creates a new test class instance per test, so this is a fresh mock for each test.
     private readonly IAlertService _alertService = Substitute.For<IAlertService>();
 
-    private DbContextOptions<AppDbContext> _dbContextOptions = null!;
     private ServiceProvider _serviceProvider = null!;
     private Worker _sut = null!;
 
+    public WorkerIntegrationTests(WorkerTestFixture fixture)
+        => _fixture = fixture;
+
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
-
-        _dbContextOptions = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(_postgres.GetConnectionString())
-            .Options;
-
-        // Create the schema
-        await using var initDb = new AppDbContext(_dbContextOptions);
-        await initDb.Database.EnsureCreatedAsync();
+        await _fixture.ResetAsync();
 
         // Build a real service provider so Worker gets a genuine IServiceScopeFactory
-        // backed by real EF Core and real Postgres
+        // backed by real EF Core and real Postgres.
         var services = new ServiceCollection();
         services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(_postgres.GetConnectionString()));
+            options.UseNpgsql(_fixture.ConnectionString));
         services.AddScoped<ITemperatureResultRepository, PostgresTemperatureResultRepository>();
         _serviceProvider = services.BuildServiceProvider();
 
@@ -60,14 +54,11 @@ public class WorkerIntegrationTests : IAsyncLifetime
             logger:        NullLogger<Worker>.Instance);
     }
 
-    public async Task DisposeAsync()
-    {
-        await _serviceProvider.DisposeAsync();
-        await _postgres.DisposeAsync();
-    }
+    public async Task DisposeAsync() => await _serviceProvider.DisposeAsync();
 
     [Fact]
-    public async Task HandlResultAsync_PersistsResultToRealDatabase()
+    [Trait("Category", "Integration")]
+    public async Task HandleResultAsync_PersistsResultToRealDatabase()
     {
         // Arrange
         var result = new TemperatureAnalysisResult
@@ -82,15 +73,22 @@ public class WorkerIntegrationTests : IAsyncLifetime
         await _sut.HandleResultAsync(result);
 
         // Assert
-        await using var assertDb = new AppDbContext(_dbContextOptions);
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
         var saved = await assertDb.TemperatureResults.SingleAsync();
 
         Assert.Equal(result.SensorId, saved.SensorId);
         Assert.Equal(result.TempCelsius, saved.TempCelsius);
         Assert.Equal("Normal", saved.Status);
+
+        // PostgreSQL's timestamptz has microsecond precision, while .NET's DateTimeOffset
+        // ticks are 100ns. The last tick may be truncated on the round-trip, so we allow
+        // a 1-microsecond tolerance rather than requiring exact equality.
+        var tolerance = TimeSpan.FromMicroseconds(1);
+        Assert.InRange(saved.Timestamp, result.Timestamp - tolerance, result.Timestamp + tolerance);
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task HandleResultAsync_WhenStatusIsCritical_PersistsAndRaisesAlert()
     {
         // Arrange
@@ -106,7 +104,7 @@ public class WorkerIntegrationTests : IAsyncLifetime
         await _sut.HandleResultAsync(result);
 
         // Assert: real persistence happened
-        await using var assertDb = new AppDbContext(_dbContextOptions);
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
         var saved = await assertDb.TemperatureResults.SingleAsync();
         Assert.Equal("Critical", saved.Status);
 
@@ -115,6 +113,7 @@ public class WorkerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task HandleResultAsync_WhenStatusIsNormal_PersistsButDoesNotRaiseAlert()
     {
         // Arrange
@@ -130,11 +129,62 @@ public class WorkerIntegrationTests : IAsyncLifetime
         await _sut.HandleResultAsync(result);
 
         // Assert: real persistence happened
-        await using var assertDb = new AppDbContext(_dbContextOptions);
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
         var saved = await assertDb.TemperatureResults.SingleAsync();
         Assert.Equal("Normal", saved.Status);
 
         // Assert: alert boundary was NOT triggered
         await _alertService.DidNotReceive().RaiseAlertAsync(Arg.Any<TemperatureAnalysisResult>());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task HandleResultAsync_WhenStatusIsError_PersistsButDoesNotRaiseAlert()
+    {
+        // Arrange
+        var result = new TemperatureAnalysisResult
+        {
+            SensorId = Guid.NewGuid(),
+            TempCelsius = 0.0,
+            Timestamp = DateTimeOffset.UtcNow,
+            Status = TemperatureStatus.Error
+        };
+
+        // Act
+        await _sut.HandleResultAsync(result);
+
+        // Assert: real persistence happened
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
+        var saved = await assertDb.TemperatureResults.SingleAsync();
+        Assert.Equal("Error", saved.Status);
+
+        // Assert: alert boundary was NOT triggered
+        await _alertService.DidNotReceive().RaiseAlertAsync(Arg.Any<TemperatureAnalysisResult>());
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task HandleResultAsync_MultipleCalls_PersistsAllRecordsIndependently()
+    {
+        // Arrange
+        // Each call exercises a distinct DI scope and DbContext instance, verifying that the
+        // Worker's per-call scope creation works correctly with a real IServiceScopeFactory.
+        var results = new[]
+        {
+            new TemperatureAnalysisResult { SensorId = Guid.NewGuid(), TempCelsius = 20.0, Timestamp = DateTimeOffset.UtcNow, Status = TemperatureStatus.Normal },
+            new TemperatureAnalysisResult { SensorId = Guid.NewGuid(), TempCelsius = 95.0, Timestamp = DateTimeOffset.UtcNow, Status = TemperatureStatus.Critical },
+        };
+
+        // Act
+        foreach (var result in results)
+            await _sut.HandleResultAsync(result);
+
+        // Assert: both records were independently committed
+        await using var assertDb = new AppDbContext(_fixture.DbContextOptions);
+        var saved = await assertDb.TemperatureResults.OrderBy(r => r.Id).ToListAsync();
+
+        Assert.Equal(2, saved.Count);
+        Assert.Equal(results[0].SensorId, saved[0].SensorId);
+        Assert.Equal(results[1].SensorId, saved[1].SensorId);
     }
 }
