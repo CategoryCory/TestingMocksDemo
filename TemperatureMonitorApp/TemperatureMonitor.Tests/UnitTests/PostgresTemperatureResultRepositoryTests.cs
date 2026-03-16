@@ -5,6 +5,9 @@ using TemperatureMonitor.Persistence;
 
 namespace TemperatureMonitor.Tests.UnitTests;
 
+/// <summary>
+/// Unit tests for <see cref="PostgresTemperatureResultRepository"/>.
+/// </summary>
 public class PostgresTemperatureResultRepositoryTests
 {
     // --- Mocks ---

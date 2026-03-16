@@ -6,13 +6,16 @@ using TemperatureMonitor.Contracts;
 
 namespace TemperatureMonitor.Tests.UnitTests;
 
+/// <summary>
+/// Unit tests for <see cref="Worker.HandleResultAsync"/>.
+/// </summary>
 public sealed class WorkerHandleResultTests
 {
     // --- Mocks ---
     private readonly ITemperatureReadingGenerator _generator = Substitute.For<ITemperatureReadingGenerator>();
     private readonly ITemperatureReadingPublisher _publisher = Substitute.For<ITemperatureReadingPublisher>();
     private readonly ITemperatureResultConsumer _consumer = Substitute.For<ITemperatureResultConsumer>();
-    private readonly IAlertService _alertService = Substitute.For<IAlertService>();
+    private readonly IAlertBus _alertBus = Substitute.For<IAlertBus>();
     private readonly ITemperatureResultRepository _repository = Substitute.For<ITemperatureResultRepository>();
 
     // IServiceScopeFactory requires a small chain of mocks so that
@@ -40,7 +43,7 @@ public sealed class WorkerHandleResultTests
             _generator,
             _publisher,
             _consumer,
-            _alertService,
+            _alertBus,
             _scopeFactory,
             NullLogger<Worker>.Instance);
     }
@@ -82,7 +85,7 @@ public sealed class WorkerHandleResultTests
         await _sut.HandleResultAsync(result);
 
         // Assert
-        await _alertService.DidNotReceive().RaiseAlertAsync(Arg.Any<TemperatureAnalysisResult>());
+        _alertBus.DidNotReceive().Raise(Arg.Any<TemperatureAnalysisResult>());
     }
 
     [Fact]
@@ -102,7 +105,7 @@ public sealed class WorkerHandleResultTests
         await _sut.HandleResultAsync(result);
 
         // Assert
-        await _alertService.Received(1).RaiseAlertAsync(result);
+        _alertBus.Received(1).Raise(result);
     }
 
     [Fact]
@@ -117,10 +120,9 @@ public sealed class WorkerHandleResultTests
             .Returns(Task.CompletedTask)
             .AndDoes(_ => callOrder.Add("save"));
 
-        _alertService
-            .RaiseAlertAsync(Arg.Any<TemperatureAnalysisResult>())
-            .Returns(Task.CompletedTask)
-            .AndDoes(_ => callOrder.Add("alert"));
+        _alertBus
+            .When(b => b.Raise(Arg.Any<TemperatureAnalysisResult>()))
+            .Do(_ => callOrder.Add("alert"));
 
         var result = new TemperatureAnalysisResult
         {
@@ -154,7 +156,7 @@ public sealed class WorkerHandleResultTests
         await _sut.HandleResultAsync(result);
 
         // Assert
-        await _alertService.DidNotReceive().RaiseAlertAsync(Arg.Any<TemperatureAnalysisResult>());
+        _alertBus.DidNotReceive().Raise(Arg.Any<TemperatureAnalysisResult>());
     }
 
     [Fact]

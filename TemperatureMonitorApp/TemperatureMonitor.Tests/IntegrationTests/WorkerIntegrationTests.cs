@@ -23,9 +23,9 @@ public class WorkerIntegrationTests : IClassFixture<WorkerTestFixture>, IAsyncLi
 {
     private readonly WorkerTestFixture _fixture;
 
-    // IAlertService is mocked — it sits outside the integration boundary.
+    // IAlertBus is mocked — it sits outside the integration boundary.
     // xUnit creates a new test class instance per test, so this is a fresh mock for each test.
-    private readonly IAlertService _alertService = Substitute.For<IAlertService>();
+    private readonly IAlertBus _alertBus = Substitute.For<IAlertBus>();
 
     private ServiceProvider _serviceProvider = null!;
     private Worker _sut = null!;
@@ -49,7 +49,7 @@ public class WorkerIntegrationTests : IClassFixture<WorkerTestFixture>, IAsyncLi
             generator:     Substitute.For<ITemperatureReadingGenerator>(),
             publisher:     Substitute.For<ITemperatureReadingPublisher>(),
             consumer:      Substitute.For<ITemperatureResultConsumer>(),
-            alertService:  _alertService,
+            alertBus:      _alertBus,
             scopeFactory:  _serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             logger:        NullLogger<Worker>.Instance);
     }
@@ -109,7 +109,7 @@ public class WorkerIntegrationTests : IClassFixture<WorkerTestFixture>, IAsyncLi
         Assert.Equal("Critical", saved.Status);
 
         // Assert: alert boundary was triggered (mocked)
-        await _alertService.Received(1).RaiseAlertAsync(result);
+        _alertBus.Received(1).Raise(result);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class WorkerIntegrationTests : IClassFixture<WorkerTestFixture>, IAsyncLi
         Assert.Equal("Normal", saved.Status);
 
         // Assert: alert boundary was NOT triggered
-        await _alertService.DidNotReceive().RaiseAlertAsync(Arg.Any<TemperatureAnalysisResult>());
+        _alertBus.DidNotReceive().Raise(Arg.Any<TemperatureAnalysisResult>());
     }
 
     [Fact]
@@ -159,7 +159,7 @@ public class WorkerIntegrationTests : IClassFixture<WorkerTestFixture>, IAsyncLi
         Assert.Equal("Error", saved.Status);
 
         // Assert: alert boundary was NOT triggered
-        await _alertService.DidNotReceive().RaiseAlertAsync(Arg.Any<TemperatureAnalysisResult>());
+        _alertBus.DidNotReceive().Raise(Arg.Any<TemperatureAnalysisResult>());
     }
 
     [Fact]

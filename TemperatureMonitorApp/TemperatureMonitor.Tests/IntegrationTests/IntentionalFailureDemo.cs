@@ -35,7 +35,7 @@ public class IntentionalFailureDemo : IAsyncLifetime
             generator:    Substitute.For<ITemperatureReadingGenerator>(),
             publisher:    Substitute.For<ITemperatureReadingPublisher>(),
             consumer:     Substitute.For<ITemperatureResultConsumer>(),
-            alertService: Substitute.For<IAlertService>(),
+            alertBus: Substitute.For<IAlertBus>(),
             scopeFactory: _serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             logger:       NullLogger<Worker>.Instance);
     }
